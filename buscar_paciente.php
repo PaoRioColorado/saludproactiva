@@ -1,30 +1,73 @@
 <?php
 session_start();
 require 'conexion.php';
+require 'config.php'; // tu API Key si usarás IA
 
 if (!isset($_SESSION['medico_id'])) {
     header("Location: login.php");
     exit;
 }
 
-$pacientes = [];
+$paciente = null;
+$recomendaciones = '';
+$mensaje = '';
 $buscar = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $buscar = $_POST['dni'] ?? '';
+    if(isset($_POST['dni'])) {
+        $buscar = $_POST['dni'] ?? '';
 
-    $sql = "SELECT p.*, t.fecha AS proximo_turno
-            FROM pacientes p
-            LEFT JOIN turnos t ON t.paciente_id = p.id AND t.fecha >= CURDATE()
-            WHERE p.dni LIKE ?
-            ORDER BY t.fecha ASC";
+        // Buscar paciente por DNI
+        $stmt = $conn->prepare("SELECT * FROM pacientes WHERE dni=?");
+        $stmt->bind_param("s", $buscar);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $paciente = $result->fetch_assoc();
 
-    $stmt = $conn->prepare($sql);
-    $like = "%$buscar%";
-    $stmt->bind_param("s", $like);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $pacientes = $result->fetch_all(MYSQLI_ASSOC);
+        if ($paciente) {
+            $paciente_id = $paciente['id'];
+
+            // Último turno
+            $stmt_last = $conn->prepare("SELECT * FROM turnos WHERE paciente_id=? AND fecha < NOW() ORDER BY fecha DESC LIMIT 1");
+            $stmt_last->bind_param("i", $paciente_id);
+            $stmt_last->execute();
+            $last_turno = $stmt_last->get_result()->fetch_assoc();
+
+            // Próximo turno
+            $stmt_next = $conn->prepare("SELECT * FROM turnos WHERE paciente_id=? AND fecha >= NOW() ORDER BY fecha ASC LIMIT 1");
+            $stmt_next->bind_param("i", $paciente_id);
+            $stmt_next->execute();
+            $next_turno = $stmt_next->get_result()->fetch_assoc();
+
+            // Recomendaciones IA simuladas
+            $recomendaciones = "Recomendaciones de control médico basadas en enfermedades: " . $paciente['enfermedades'];
+        }
+    }
+
+    // Enviar recordatorio
+    if(isset($_POST['recordatorio'])) {
+        $paciente_id = $_POST['paciente_id'];
+        $enfermedad = $_POST['enfermedad'];
+
+        // Obtener datos del paciente
+        $stmt_p = $conn->prepare("SELECT nombre, email FROM pacientes WHERE id=?");
+        $stmt_p->bind_param("i", $paciente_id);
+        $stmt_p->execute();
+        $pac = $stmt_p->get_result()->fetch_assoc();
+
+        if($pac && !empty($pac['email'])) {
+            $to = $pac['email'];
+            $subject = "Recordatorio de control médico: $enfermedad";
+            $message = "Hola " . $pac['nombre'] . ",\n\nLe recordamos que debe realizar un control por su enfermedad: $enfermedad.\nPor favor coordine un turno con su médico.\n\nSaludos.";
+            $headers = "From: clinica@saludproactiva.com";
+
+            if(mail($to, $subject, $message, $headers)) {
+                $mensaje = "Recordatorio enviado a " . $pac['nombre'] . " para la enfermedad $enfermedad.";
+            } else {
+                $mensaje = "No se pudo enviar el recordatorio. Revise la configuración de correo.";
+            }
+        }
+    }
 }
 ?>
 
@@ -39,6 +82,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <div class="container mt-4">
     <h3>Buscar Paciente por DNI</h3>
 
+    <?php if($mensaje) echo "<div class='alert alert-info'>$mensaje</div>"; ?>
+
     <form method="POST" class="row g-3 mb-3">
         <div class="col-md-4">
             <input type="text" name="dni" class="form-control" placeholder="Ingrese DNI" value="<?= htmlspecialchars($buscar) ?>">
@@ -47,39 +92,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <button type="submit" class="btn btn-primary">Buscar</button>
         </div>
         <div class="col-md-2">
-            <a href="dashboard.php" class="btn btn-secondary">Volver al menú</a>
+            <button type="button" class="btn btn-secondary" onclick="window.location.href='dashboard.php'">Menú principal</button>
         </div>
     </form>
 
-    <?php if(!empty($pacientes)): ?>
-    <table class="table table-bordered bg-white">
-        <thead>
-            <tr>
-                <th>Nombre</th>
-                <th>Apellido</th>
-                <th>DNI</th>
-                <th>Obra Social / Prepaga</th>
-                <th>Próximo Turno</th>
-                <th>Acción</th>
-            </tr>
-        </thead>
-        <tbody>
-            <?php foreach($pacientes as $p): ?>
-            <tr>
-                <td><?= htmlspecialchars($p['nombre']) ?></td>
-                <td><?= htmlspecialchars($p['apellido']) ?></td>
-                <td><?= htmlspecialchars($p['dni']) ?></td>
-                <td><?= htmlspecialchars($p['obra_social']) ?></td>
-                <td><?= !empty($p['proximo_turno']) ? $p['proximo_turno'] : '-' ?></td>
-                <td><a href="paciente.php?id=<?= $p['id'] ?>" class="btn btn-sm btn-warning">Editar</a></td>
-            </tr>
-            <?php endforeach; ?>
-        </tbody>
-    </table>
-    <?php elseif($_SERVER['REQUEST_METHOD']==='POST'): ?>
-        <div class="alert alert-info">No se encontraron pacientes con ese DNI.</div>
+    <?php if ($paciente): ?>
+        <div class="card p-3 bg-white">
+            <h5>Datos del Paciente</h5>
+            <p><strong>Nombre:</strong> <?= htmlspecialchars($paciente['nombre']) ?></p>
+            <p><strong>DNI:</strong> <?= htmlspecialchars($paciente['dni']) ?></p>
+            <p><strong>Edad:</strong> <?= $paciente['edad'] ?></p>
+            <p><strong>Enfermedades:</strong> <?= htmlspecialchars($paciente['enfermedades']) ?></p>
+
+            <h5>Turnos</h5>
+            <p><strong>Último turno:</strong> <?= $last_turno ? date('d/m/Y H:i', strtotime($last_turno['fecha'])) : 'No tiene' ?></p>
+            <p><strong>Próximo turno:</strong> <?= $next_turno ? date('d/m/Y H:i', strtotime($next_turno['fecha'])) : 'No tiene' ?></p>
+
+            <h5>Recomendaciones IA</h5>
+            <p><?= $recomendaciones ?></p>
+
+            <h5>Recordatorio de control</h5>
+            <?php
+                $enfermedades = explode(',', $paciente['enfermedades']);
+                foreach($enfermedades as $enf):
+                    $enf = trim($enf);
+                    if($enf):
+            ?>
+                <form method="POST" style="display:inline-block;">
+                    <input type="hidden" name="paciente_id" value="<?= $paciente['id'] ?>">
+                    <input type="hidden" name="enfermedad" value="<?= $enf ?>">
+                    <button type="submit" name="recordatorio" class="btn btn-sm btn-info mb-1">
+                        Recordatorio: <?= $enf ?>
+                    </button>
+                </form>
+            <?php 
+                    endif;
+                endforeach;
+            ?>
+        </div>
+    <?php elseif($_SERVER['REQUEST_METHOD'] === 'POST'): ?>
+        <div class="alert alert-danger">No se encontraron pacientes con ese DNI.</div>
     <?php endif; ?>
 </div>
 </body>
 </html>
+
 

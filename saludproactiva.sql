@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Servidor: 127.0.0.1
--- Tiempo de generación: 27-08-2025 a las 21:23:31
+-- Tiempo de generación: 29-08-2025 a las 21:27:30
 -- Versión del servidor: 10.4.32-MariaDB
 -- Versión de PHP: 8.2.12
 
@@ -85,10 +85,8 @@ CREATE TABLE `pacientes` (
   `apellido` varchar(100) NOT NULL DEFAULT '',
   `nombre` varchar(100) NOT NULL DEFAULT '',
   `dni` varchar(20) NOT NULL DEFAULT '',
-  `genero` varchar(20) NOT NULL DEFAULT '',
   `estado` varchar(20) NOT NULL DEFAULT '',
   `edad` int(11) DEFAULT NULL,
-  `estado_civil` varchar(50) NOT NULL DEFAULT '',
   `grupo_sanguineo` varchar(5) NOT NULL DEFAULT '',
   `telefono` varchar(20) NOT NULL DEFAULT '',
   `movil` varchar(20) NOT NULL DEFAULT '',
@@ -96,7 +94,6 @@ CREATE TABLE `pacientes` (
   `direccion` varchar(200) NOT NULL DEFAULT '',
   `obra_social` varchar(100) DEFAULT NULL,
   `poliza` varchar(50) NOT NULL DEFAULT '',
-  `tarjeta` varchar(50) NOT NULL DEFAULT '',
   `historia_clinica` varchar(50) NOT NULL DEFAULT ''
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
@@ -104,8 +101,9 @@ CREATE TABLE `pacientes` (
 -- Volcado de datos para la tabla `pacientes`
 --
 
-INSERT INTO `pacientes` (`id`, `fecha_nacimiento`, `enfermedades`, `apellido`, `nombre`, `dni`, `genero`, `estado`, `edad`, `estado_civil`, `grupo_sanguineo`, `telefono`, `movil`, `email`, `direccion`, `obra_social`, `poliza`, `tarjeta`, `historia_clinica`) VALUES
-(5, '1954-05-14', '', 'Dali', 'Salvador', '9123456', 'Varón', 'Alta', NULL, 'Casado', '0 +', '', '2915904189', 'dali@gmail.com', 'España 11', 'OSDE', '455', '', '');
+INSERT INTO `pacientes` (`id`, `fecha_nacimiento`, `enfermedades`, `apellido`, `nombre`, `dni`, `estado`, `edad`, `grupo_sanguineo`, `telefono`, `movil`, `email`, `direccion`, `obra_social`, `poliza`, `historia_clinica`) VALUES
+(5, '1954-05-14', 'Hipertensión, Diabetes', 'Dali', 'Salvador', '9123456', 'Alta', 0, '0 +', '', '2915904189', 'dali@gmail.com', 'España 11', 'OSDE', '455', ''),
+(7, '1980-10-25', 'Hipertensión', 'Picasso', 'Pablo', '10123456', 'Alta', 44, '', '', '2914123456', 'picasso@mail.com', 'Malaga 1881', 'MEDIFE', '918', '');
 
 -- --------------------------------------------------------
 
@@ -118,8 +116,18 @@ CREATE TABLE `turnos` (
   `paciente_id` int(11) NOT NULL,
   `medico_id` int(11) NOT NULL,
   `fecha` datetime DEFAULT NULL,
-  `estado` enum('pendiente','confirmado','cancelado') DEFAULT 'pendiente'
+  `motivo` varchar(255) DEFAULT NULL,
+  `notas` text DEFAULT NULL,
+  `creado_en` timestamp NOT NULL DEFAULT current_timestamp(),
+  `estado` enum('pendiente','confirmado','realizado','cancelado') DEFAULT 'pendiente'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Volcado de datos para la tabla `turnos`
+--
+
+INSERT INTO `turnos` (`id`, `paciente_id`, `medico_id`, `fecha`, `motivo`, `notas`, `creado_en`, `estado`) VALUES
+(2, 5, 1, '2025-08-28 14:24:00', 'Consulta General', '', '2025-08-28 17:24:41', 'pendiente');
 
 -- --------------------------------------------------------
 
@@ -209,13 +217,13 @@ ALTER TABLE `medico_registrado`
 -- AUTO_INCREMENT de la tabla `pacientes`
 --
 ALTER TABLE `pacientes`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
 
 --
 -- AUTO_INCREMENT de la tabla `turnos`
 --
 ALTER TABLE `turnos`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
 
 --
 -- AUTO_INCREMENT de la tabla `usuarios`
@@ -244,8 +252,7 @@ ALTER TABLE `estudios`
 -- Filtros para la tabla `turnos`
 --
 ALTER TABLE `turnos`
-  ADD CONSTRAINT `turnos_ibfk_1` FOREIGN KEY (`paciente_id`) REFERENCES `pacientes` (`id`),
-  ADD CONSTRAINT `turnos_ibfk_2` FOREIGN KEY (`medico_id`) REFERENCES `usuarios` (`id`);
+  ADD CONSTRAINT `turnos_ibfk_1` FOREIGN KEY (`paciente_id`) REFERENCES `pacientes` (`id`);
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
