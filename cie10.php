@@ -68,8 +68,9 @@ a:focus, button:focus { outline: 3px solid #0d6efd; outline-offset: 2px; }
       <ul class="navbar-nav me-auto">
         <li class="nav-item"><a class="btn btn-menu" href="dashboard.php">Inicio</a></li>
         <li class="nav-item"><a class="btn btn-menu" href="vademecum.php">Vademécum</a></li>
-        <li class="nav-item"><a class="btn btn-menu" href="pacientes.php">Pacientes</a></li>
+        <li class="nav-item"><a class="btn btn-menu" href="buscar_paciente.php">Pacientes</a></li>
         <li class="nav-item"><a class="btn btn-menu" href="turnos.php">Turnos</a></li>
+        <li class="nav-item"><a class="btn btn-menu" href="estadisticas.php">Estadísticas</a></li>
       </ul>
       <ul class="navbar-nav">
         <?php if ($medico_nombre): ?>
