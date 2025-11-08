@@ -56,7 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// LISTA DE TURNOS AGRUPADOS POR MES
+// LISTA DE TURNOS
 $sql = "SELECT t.*, p.nombre, p.apellido, p.dni, p.email 
         FROM turnos t
         JOIN pacientes p ON p.id = t.paciente_id
@@ -97,6 +97,7 @@ $meses = [
 <title>Turnos | SaludProactiva</title>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 <style>
+body, html { height: 100%; margin:0; font-family: 'Segoe UI', sans-serif; display:flex; flex-direction:column; }
 .navbar { background-color: #212529; padding-top: 0.2rem; padding-bottom: 0.2rem; }
 .navbar-brand img { height: 50px; width: auto; }
 .navbar .btn-menu { background-color: #212529; color: #fff; border: 1px solid #212529; border-radius: 5px; margin-right: 0.3rem; padding: 2px 8px; font-size: 0.85rem; transition: 0.3s; }
@@ -104,19 +105,29 @@ $meses = [
 .navbar-text { color: #fff; background-color: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 5px; margin-right: 0.3rem; font-weight: 500; font-size: 0.85rem;}
 .btn-salir { background-color: #dc3545; color: #fff; border: none; padding: 2px 10px; font-size: 0.85rem; }
 .btn-salir:hover { background-color: #b02a37; }
-footer { background-color: #212529; color: #fff; text-align: center; padding: 12px 0; position: relative; bottom: 0; width: 100%; }
-footer a { color: #0d6efd; text-decoration: none; font-weight: bold; }
-footer a:hover { text-decoration: underline; }
-.form-agenda { background-color: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); max-width: 650px; margin-bottom: 30px; }
-.btn-agenda { width: 120px; }
 
-/* Tablas modernas mejoradas */
+/* Contenedor principal para que el footer quede abajo */
+.container { flex: 1; margin-top:20px; }
+
+/* Tablas modernas */
 .table-modern { border-radius: 10px; overflow: hidden; box-shadow: 0 2px 6px rgba(0,0,0,0.05); }
 .table-modern thead { background-color: #e9ecef; }
 .table-modern tbody tr:nth-child(odd) { background-color: #f9f9f9; }
 .table-modern tbody tr:nth-child(even) { background-color: #ffffff; }
 .table-modern tbody tr:hover { background-color: #f1f5f9; box-shadow: inset 0 0 5px rgba(0,0,0,0.05); transition: 0.2s; }
 .table-modern th, .table-modern td { vertical-align: middle; }
+
+/* Formulario */
+.form-agenda { background-color: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); max-width:650px; margin:auto; }
+
+/* Imagen estetoscopio */
+#imagen-estetoscopio { text-align:center; margin-top:20px; margin-bottom:20px; }
+#imagen-estetoscopio img { max-height:150px; opacity:0.3; filter: grayscale(50%); }
+
+/* Footer */
+footer { background-color:#212529; color:#fff; text-align:center; padding:12px 0; position: relative; bottom: 0; width: 100%; }
+footer a { color:#0d6efd; text-decoration: none; font-weight: bold; }
+footer a:hover { text-decoration: underline; }
 </style>
 </head>
 <body>
@@ -126,9 +137,6 @@ footer a:hover { text-decoration: underline; }
     <a class="navbar-brand" href="dashboard.php">
         <img src="icons/logo.png" alt="Logo SaludProactiva">
     </a>
-    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarMenu" aria-controls="navbarMenu" aria-expanded="false" aria-label="Toggle navigation">
-      <span class="navbar-toggler-icon"></span>
-    </button>
     <div class="collapse navbar-collapse" id="navbarMenu">
       <ul class="navbar-nav me-auto mb-2 mb-lg-0">
         <li class="nav-item"><a class="btn btn-menu" href="dashboard.php">Inicio</a></li>
@@ -149,48 +157,11 @@ footer a:hover { text-decoration: underline; }
   </div>
 </nav>
 
-<div class="container mt-4">
-    <h3 class="mb-3">Turnos del Médico</h3>
-
-    <?php
-    $mes_actual = '';
-    foreach($turnos as $t):
-        $fecha_dt = new DateTime($t['fecha']);
-        $mes_turno = $meses[(int)$fecha_dt->format('n')] . ' ' . $fecha_dt->format('Y');
-        if($mes_turno !== $mes_actual):
-            if($mes_actual !== '') echo "</tbody></table></div>";
-            echo "<h5 class='mt-4'>".ucfirst($mes_turno)."</h5>";
-            echo "<div class='table-responsive'><table class='table table-modern table-hover mb-4'><thead>
-                <tr>
-                    <th>Paciente</th>
-                    <th>DNI</th>
-                    <th>Motivo</th>
-                    <th>Fecha y Hora</th>
-                    <th>Estado</th>
-                    <th>Acción</th>
-                </tr></thead><tbody>";
-            $mes_actual = $mes_turno;
-        endif;
-    ?>
-        <tr>
-            <td><?= htmlspecialchars($t['apellido'].' '.$t['nombre']) ?></td>
-            <td><?= htmlspecialchars($t['dni'] ?? '') ?></td>
-            <td><?= htmlspecialchars($t['motivo']) ?></td>
-            <td><?= date('d/m/Y H:i', strtotime($t['fecha'])) ?></td>
-            <td><?= ucfirst($t['estado']) ?></td>
-            <td>
-                <a href="turnos.php?action=editar&id=<?= $t['id'] ?>" class="btn btn-sm btn-warning">Editar</a>
-                <a href="turnos.php?delete_id=<?= $t['id'] ?>" class="btn btn-sm btn-danger" onclick="return confirm('¿Confirma eliminar este turno?')">Eliminar</a>
-                <a href="mailto:<?= $t['email'] ?? '' ?>?subject=Recordatorio Turno&body=Hola <?= urlencode($t['nombre'].' '.$t['apellido']) ?>, tiene un turno el <?= date('d/m/Y H:i', strtotime($t['fecha'])) ?>" class="btn btn-sm btn-info">Recordatorio</a>
-            </td>
-        </tr>
-    <?php endforeach; ?>
-    </tbody></table></div>
-
+<div class="container">
     <!-- FORMULARIO -->
-    <h4 class="mb-3"><?= $editar_turno ? 'Editar Turno' : 'Nuevo Turno' ?></h4>
+    <h4 class="mb-2 text-center"><?= $editar_turno ? 'Editar Turno' : 'Nuevo Turno' ?></h4>
     <?php if(!empty($error)) echo "<div class='alert alert-danger'>$error</div>"; ?>
-    <form method="POST" class="form-agenda row g-3">
+    <form method="POST" class="form-agenda row g-3" style="margin-top:10px;">
         <input type="hidden" name="turno_id" value="<?= $editar_turno['id'] ?? '' ?>">
 
         <div class="col-md-6">
@@ -259,6 +230,11 @@ footer a:hover { text-decoration: underline; }
             <button type="submit" class="btn btn-primary btn-agenda"><?= $editar_turno ? 'Actualizar' : 'Agendar' ?></button>
         </div>
     </form>
+
+    <!-- IMAGEN ESTETOSCOPIO -->
+    <div id="imagen-estetoscopio">
+        <img src="icons/estetoscopio.png" alt="Estetoscopio">
+    </div>
 </div>
 
 <footer>
@@ -284,3 +260,5 @@ document.querySelector('select[name="paciente_id"]').addEventListener('change', 
 </script>
 </body>
 </html>
+
+
