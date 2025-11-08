@@ -1,85 +1,154 @@
 <?php
 session_start();
+require 'conexion.php';
+
+if (!isset($_SESSION['medico_id'])) {
+    header("Location: login.php");
+    exit;
+}
+
 $medico_nombre = $_SESSION['medico_nombre'] ?? 'Dr. SaludProactiva';
 
-// Conexión a la base de datos
-$conexion = new mysqli("localhost", "root", "", "saludproactiva");
-if ($conexion->connect_error) {
-    die("Error de conexión: " . $conexion->connect_error);
+// Obtener pacientes
+$pacientes = [];
+$sql = "SELECT id, nombre, apellido, dni FROM pacientes ORDER BY nombre";
+$result = $conn->query($sql);
+if($result){
+    while($row = $result->fetch_assoc()){
+        $pacientes[] = $row;
+    }
 }
 
-// Parámetros de búsqueda (GET)
-$dni_buscar = $_GET['dni'] ?? '';
-$apellido_buscar = $_GET['apellido'] ?? '';
-$dni_select = $_GET['dni_select'] ?? '';
-
-if (!empty($dni_select)) {
-    $dni_buscar = $dni_select;
+// Controles
+$controles = [];
+$sql = "SELECT * FROM controles ORDER BY fecha_proximo_control ASC";
+$result = $conn->query($sql);
+if($result){
+    while($row = $result->fetch_assoc()){
+        $controles[$row['paciente_id']][] = $row;
+    }
 }
 
-$query = "SELECT id, nombre, apellido, dni, fecha_nacimiento, email, telefono FROM pacientes";
-$params = [];
-$types = "";
-$where = [];
-
-if (!empty($dni_buscar)) {
-    $where[] = "dni = ?";
-    $types .= "s";
-    $params[] = $dni_buscar;
-} elseif (!empty($apellido_buscar)) {
-    $where[] = "apellido LIKE ?";
-    $types .= "s";
-    $params[] = '%' . $apellido_buscar . '%';
+// Estudios
+$estudios = [];
+$sql = "SELECT * FROM estudios ORDER BY proximo_control ASC";
+$result = $conn->query($sql);
+if($result){
+    while($row = $result->fetch_assoc()){
+        $estudios[$row['paciente_id']][] = $row;
+    }
 }
 
-if (!empty($where)) {
-    $query .= " WHERE " . implode(" AND ", $where);
+// Medicación
+$medicacion = [];
+$sql = "SELECT * FROM medicacion ORDER BY paciente_id ASC";
+$result = $conn->query($sql);
+if($result){
+    while($row = $result->fetch_assoc()){
+        $medicacion[$row['paciente_id']][] = $row;
+    }
 }
 
-$query .= " ORDER BY apellido, nombre";
-
-$stmt = $conexion->prepare($query);
-if ($stmt === false) {
-    die("Error en la preparación de la consulta: " . $conexion->error);
+// Cargar CIE-10 CSV
+$cie_file = __DIR__ . "/tabla-salud_cie10.csv";
+$cie_data = [];
+if (($handle = fopen($cie_file, "r")) !== false) {
+    $header = fgetcsv($handle);
+    while (($row = fgetcsv($handle)) !== false) {
+        $cie_data[] = [
+            'codigo' => $row[0],
+            'titulo' => $row[1],
+            'sintomas' => isset($row[2]) ? array_map('trim', explode(',', $row[2])) : [],
+            // Probabilidad de complicaciones si no se trata (ejemplo)
+            'complicaciones' => $row[3] ?? ''
+        ];
+    }
+    fclose($handle);
 }
-if (!empty($params)) {
-    $stmt->bind_param($types, ...$params);
-}
-$stmt->execute();
-$result = $stmt->get_result();
 
-$listado = $conexion->query("SELECT id, nombre, apellido, dni FROM pacientes ORDER BY apellido, nombre");
-$listadoPacientes = $listado ? $listado->fetch_all(MYSQLI_ASSOC) : [];
+// Cargar medicamentos CSV
+$med_file = __DIR__ . "/vademecum 2018.csv";
+$med_data = [];
+if (($handle = fopen($med_file, "r")) !== false) {
+    $header = fgetcsv($handle);
+    while (($row = fgetcsv($handle)) !== false) {
+        $med_data[] = [
+            'nombre' => $row[0],
+            'principio' => $row[1],
+            'presentacion' => $row[2],
+            'posologia' => $row[3] ?? '',
+            'aprobado' => $row[4] ?? ''
+        ];
+    }
+    fclose($handle);
+}
+
+// Función para limpiar texto de palabras como "control", "consulta", etc.
+function limpiar_sintoma($s){
+    $s = strtolower($s);
+    $s = str_replace(['control','consulta','examen'], '', $s);
+    return trim($s);
+}
 ?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>Riesgo de Pacientes | SaludProactiva</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Controles de Pacientes | SaludProactiva</title>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
-.navbar { background-color: #212529; padding: 0.2rem 1rem; }
-.navbar-brand img { height: 50px; width: auto; }
-.navbar .btn-menu { background-color: #212529; color: #fff; border-radius:5px; margin-right:0.5rem; padding:2px 10px; font-size:0.9rem;}
+body, html { height: 100%; margin:0; font-family: 'Segoe UI', sans-serif; display:flex; flex-direction:column; }
+.navbar { background-color: #212529; }
+.navbar .btn-menu { background-color: #212529; color: #fff; margin-right:0.5rem; }
 .navbar .btn-menu:hover { background-color: #6c757d; }
-.navbar-text { color:#fff; background-color: rgba(255,255,255,0.1); padding:2px 6px; border-radius:5px; font-size:0.9rem;}
-.btn-salir { background-color:#dc3545; color:#fff; border:none; padding:2px 10px; font-size:0.9rem;}
+.navbar-text { color:#fff; margin-right:0.5rem; }
+.btn-salir { background-color:#dc3545; color:#fff; border:none; }
 .btn-salir:hover { background-color:#b02a37; }
-.data-section { border:1px solid #dee2e6; padding:15px; margin-top:15px; border-radius:5px; background:#f8f9fa;}
+.container { margin-top:2rem; max-width:1200px; flex:1; }
+
+.card { margin-bottom:1rem; }
+.card-header { font-weight:600; background-color:#0d6efd; color:#fff; }
+.card-body { background-color:#fff; }
+
+.btn-recordatorio {
+    background: linear-gradient(135deg,#0dcaf0,#198754);
+    color: #fff;
+    border: none;
+    border-radius: 12px;
+    padding: 8px 16px;
+    margin-right:5px;
+    font-weight: 600;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+    transition: 0.3s ease;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.btn-recordatorio:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(0,0,0,0.3);
+    background: linear-gradient(135deg,#198754,#0dcaf0);
+}
+
 footer { background-color:#212529; color:#fff; text-align:center; padding:12px 0; }
 footer a { color:#0d6efd; text-decoration:none; font-weight:bold; }
 footer a:hover { text-decoration:underline; }
-body { display:flex; flex-direction:column; min-height:100vh; }
-.container-main { flex:1; padding-top:20px; padding-bottom:20px; }
-.table-responsive { margin-top:15px; }
+
+.alerta-vencido { color: #dc3545; font-weight: 600; }
+.alerta-proximo { color: #ffc107; font-weight: 600; }
+
+#imagen-vacia img { max-height:150px; opacity:0.3; filter: grayscale(50%); }
+#imagen-vacia p { color:#6c757d; font-style:italic; margin-top:10px; }
 </style>
 </head>
 <body>
+
 <nav class="navbar navbar-expand-lg navbar-dark">
   <div class="container-fluid">
-    <a class="navbar-brand" href="dashboard.php"><img src="icons/logo.png" alt="Logo"></a>
+    <a class="navbar-brand" href="dashboard.php">
+      <img src="icons/logo.png" alt="Logo" style="height:50px;">
+    </a>
     <div class="collapse navbar-collapse">
       <ul class="navbar-nav me-auto">
         <li class="nav-item"><a class="btn btn-menu" href="dashboard.php">Inicio</a></li>
@@ -87,103 +156,140 @@ body { display:flex; flex-direction:column; min-height:100vh; }
         <li class="nav-item"><a class="btn btn-menu" href="turnos.php">Turnos</a></li>
       </ul>
       <ul class="navbar-nav">
-        <li class="nav-item"><span class="navbar-text">👨‍⚕️ <?= htmlspecialchars($medico_nombre) ?></span></li>
-        <li class="nav-item"><a class="btn btn-salir btn-sm" href="logout.php">Salir</a></li>
+        <?php if($medico_nombre): ?>
+          <li class="nav-item"><span class="navbar-text">👨‍⚕️ <?= htmlspecialchars($medico_nombre) ?></span></li>
+          <li class="nav-item"><a class="btn btn-salir btn-sm" href="logout.php">Salir</a></li>
+        <?php endif; ?>
       </ul>
     </div>
   </div>
 </nav>
 
-<div class="container container-main">
-  <h3 class="mb-3">Buscar Pacientes</h3>
+<div class="container">
+<h2 class="mb-4">Controles de Pacientes</h2>
 
-  <div class="row g-3 align-items-end">
-    <div class="col-md-4">
-      <label for="selectPaciente" class="form-label">Seleccionar paciente (desplegable):</label>
-      <form id="form_select" method="GET" action="buscar_paciente.php">
-        <div class="input-group">
-          <select id="selectPaciente" name="dni_select" class="form-select" onchange="document.getElementById('form_select').submit();">
-            <option value="">-- Seleccione --</option>
-            <?php foreach ($listadoPacientes as $p): ?>
-              <option value="<?= htmlspecialchars($p['dni']) ?>" <?= ($p['dni'] === $dni_buscar || $p['dni'] === $dni_select) ? 'selected' : '' ?>>
-                <?= htmlspecialchars($p['apellido'] . ", " . $p['nombre'] . " (DNI: " . $p['dni'] . ")") ?>
-              </option>
-            <?php endforeach; ?>
-          </select>
-        </div>
-      </form>
-    </div>
+<div class="mb-4">
+    <label for="selectPaciente" class="form-label">Seleccione un paciente:</label>
+    <select id="selectPaciente" class="form-select">
+        <option value="">-- Elegir paciente --</option>
+        <?php foreach($pacientes as $p): ?>
+            <option value="<?= $p['id'] ?>"><?= htmlspecialchars($p['nombre'] . ' ' . $p['apellido']) ?> (<?= $p['dni'] ?>)</option>
+        <?php endforeach; ?>
+    </select>
+</div>
 
-    <div class="col-md-4">
-      <form method="GET" action="buscar_paciente.php" class="d-flex">
-        <div class="me-2" style="flex:1">
-          <label for="apellido" class="form-label">Buscar por apellido:</label>
-          <input type="text" id="apellido" name="apellido" class="form-control" placeholder="Ingrese apellido" value="<?= htmlspecialchars($apellido_buscar) ?>">
-        </div>
-        <div class="align-self-end">
-          <button class="btn btn-primary" type="submit">Buscar</button>
-        </div>
-      </form>
-    </div>
+<div id="imagen-vacia" style="text-align:center; margin-top:50px;">
+    <img src="icons/estetoscopio.png" alt="Estetoscopio">
+    <p>Seleccione un paciente para ver sus controles</p>
+</div>
 
-    <div class="col-md-4">
-      <form method="GET" action="buscar_paciente.php" class="d-flex">
-        <div style="flex:1">
-          <label for="dni" class="form-label">Buscar por DNI exacto:</label>
-          <input type="text" id="dni" name="dni" class="form-control" placeholder="Ingrese DNI" value="<?= htmlspecialchars($dni_buscar) ?>">
-        </div>
-        <div class="align-self-end">
-          <button class="btn btn-primary" type="submit">Buscar</button>
-        </div>
-      </form>
-    </div>
-  </div>
+<div id="paciente-seleccionado">
+    <?php foreach($pacientes as $p): ?>
+        <div class="card paciente-card" data-paciente-id="<?= $p['id'] ?>" style="display:none;">
+            <div class="card-header">
+                Controles de <?= htmlspecialchars($p['nombre'] . ' ' . $p['apellido']) ?>
+            </div>
+            <div class="card-body">
+                <?php if(isset($controles[$p['id']])): ?>
+                    <h6>Controles:</h6>
+                    <ul>
+                    <?php
+                    $paciente_sintomas = array_map(function($c){ return limpiar_sintoma($c['tipo_control']); }, $controles[$p['id']]);
+                    foreach($controles[$p['id']] as $c):
+                        $hoy = new DateTime();
+                        $fecha_prox = new DateTime($c['fecha_proximo_control']);
+                        $clase_alerta = '';
+                        if($fecha_prox < $hoy) $clase_alerta = 'alerta-vencido';
+                        elseif($fecha_prox <= (new DateTime())->modify('+3 days')) $clase_alerta = 'alerta-proximo';
+                    ?>
+                        <li>
+                            <strong>Tipo:</strong> <?= htmlspecialchars($c['tipo_control']) ?> |
+                            <strong>Último:</strong> <?= $c['fecha_ultimo_control'] ?> |
+                            <strong>Próximo:</strong> <span class="<?= $clase_alerta ?>"><?= $c['fecha_proximo_control'] ?></span>
+                            <br>
+                            <button class="btn-recordatorio" onclick="enviarRecordatorio('<?= htmlspecialchars($p['nombre']) ?>','control','<?= htmlspecialchars($c['tipo_control']) ?>')">🔔 Recordatorio</button>
+                        </li>
+                    <?php endforeach; ?>
+                    </ul>
 
-  <div class="table-responsive">
-    <?php if ($result && $result->num_rows > 0): ?>
-      <table class="table table-bordered table-striped mt-3">
-        <thead class="table-dark">
-          <tr>
-            <th>Apellido</th>
-            <th>Nombre</th>
-            <th>DNI</th>
-            <th>Fecha Nac.</th>
-            <th>Email</th>
-            <th>Teléfono</th>
-            <th>Acciones</th>
-          </tr>
-        </thead>
-        <tbody>
-          <?php while ($row = $result->fetch_assoc()): ?>
-            <tr>
-              <td><?= htmlspecialchars($row['apellido']) ?></td>
-              <td><?= htmlspecialchars($row['nombre']) ?></td>
-              <td><?= htmlspecialchars($row['dni']) ?></td>
-              <td><?= htmlspecialchars($row['fecha_nacimiento'] ?? '') ?></td>
-              <td><?= htmlspecialchars($row['email'] ?? '') ?></td>
-              <td><?= htmlspecialchars($row['telefono'] ?? '') ?></td>
-              <td>
-                <a href="paciente.php?id=<?= $row['id'] ?>" class="btn btn-sm btn-warning">Editar</a>
-                <a href="ver_controles.php?id=<?= $row['id'] ?>" class="btn btn-sm btn-info text-white">Ver controles</a>
-              </td>
-            </tr>
-          <?php endwhile; ?>
-        </tbody>
-      </table>
-    <?php else: ?>
-      <div class="alert alert-info mt-3">No se encontraron pacientes. Podés probar con otro apellido o mostrar todos seleccionando del desplegable.</div>
-    <?php endif; ?>
-  </div>
+                    <?php
+                    // Pronóstico / coincidencias CIE-10
+                    $cie_matches = [];
+                    foreach($cie_data as $cie){
+                        foreach($cie['sintomas'] as $s){
+                            foreach($paciente_sintomas as $ps){
+                                if(stripos($ps, trim($s)) !== false || stripos(trim($s), $ps) !== false){
+                                    $cie_matches[$cie['codigo']] = $cie;
+                                }
+                            }
+                        }
+                    }
+
+                    if(count($cie_matches) > 0){
+                        echo "<h6 class='mt-3'>Coincidencias CIE-10 para los síntomas registrados:</h6><ul>";
+                        $meds_global = []; // Para no repetir medicamentos
+                        foreach($cie_matches as $cod => $cie){
+                            echo "<li><strong>$cod</strong>: {$cie['titulo']}</li>";
+                            if(!empty($cie['complicaciones'])){
+                                echo "<p><em>Probabilidad de complicaciones si no se trata: {$cie['complicaciones']}</em></p>";
+                            }
+                            // Medicamentos sugeridos
+                            foreach($med_data as $m){
+                                if(stripos($cie['titulo'], $m['nombre']) !== false || stripos($cie['titulo'], $m['principio']) !== false){
+                                    $meds_global[$m['nombre']] = $m;
+                                }
+                            }
+                        }
+                        echo "</ul>";
+
+                        if(count($meds_global) > 0){
+                            echo "<h6 class='mt-2'>Medicamentos sugeridos:</h6><ul>";
+                            foreach($meds_global as $m){
+                                echo "<li><strong>{$m['nombre']}</strong> ({$m['principio']}), {$m['presentacion']}, Posología: {$m['posologia']}</li>";
+                            }
+                            echo "</ul>";
+                        }
+                    } else {
+                        echo "<p class='text-danger mt-2'>No se encontraron coincidencias en CIE-10 para los síntomas registrados.</p>";
+                    }
+                    ?>
+                <?php else: ?>
+                    <p>No hay controles registrados.</p>
+                <?php endif; ?>
+            </div>
+        </div>
+    <?php endforeach; ?>
+</div>
 </div>
 
 <footer>
-  <small>© <?= date('Y') ?> SaludProactiva | <a href="mailto:paoladf.it@gmail.com">Desarrollado por Paola DF</a></small>
+<small>© <?= date('Y') ?> SaludProactiva | <a href="mailto:paoladf.it@gmail.com">Desarrollado por Paola DF</a></small>
 </footer>
 
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+const selectPaciente = document.getElementById('selectPaciente');
+const cards = document.querySelectorAll('.paciente-card');
+const imagenVacia = document.getElementById('imagen-vacia');
+
+selectPaciente.addEventListener('change', function(){
+    const val = this.value;
+    if(val === ""){
+        imagenVacia.style.display = 'block';
+    } else {
+        imagenVacia.style.display = 'none';
+    }
+    cards.forEach(card => {
+        card.style.display = card.dataset.pacienteId === val ? 'block' : 'none';
+    });
+});
+
+function enviarRecordatorio(nombre, tipo, descripcion){
+    const now = new Date().toLocaleString();
+    alert(`Se envió un recordatorio a ${nombre} para ${tipo}: ${descripcion}\n(${now})`);
+}
+</script>
 </body>
 </html>
 
-<?php
-$stmt->close();
-$conexion->close();
-?>
+
