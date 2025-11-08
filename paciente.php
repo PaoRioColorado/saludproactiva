@@ -85,10 +85,8 @@ footer a:hover { text-decoration: underline; }
     <div class="collapse navbar-collapse" id="navbarNav">
       <ul class="navbar-nav me-auto">
         <li class="nav-item"><a class="btn btn-menu" href="dashboard.php">Inicio</a></li>
-        <li class="nav-item"><a class="btn btn-menu" href="vademecum.php">Vademécum</a></li>
         <li class="nav-item"><a class="btn btn-menu" href="buscar_paciente.php">Pacientes</a></li>
         <li class="nav-item"><a class="btn btn-menu" href="turnos.php">Turnos</a></li>   
-        <li class="nav-item"><a class="btn btn-menu" href="estadisticas.php">Estadísticas</a></li>
       </ul>
       <ul class="navbar-nav">
         <?php if ($medico_nombre): ?>
@@ -206,4 +204,5 @@ function calcularEdad() {
 
 </body>
 </html>
+
 
