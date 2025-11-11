@@ -19,75 +19,66 @@ if($result){
     }
 }
 
-// Controles
+// Controles simulados
+$tipos_control = [
+    'Control alergias' => [3,5,6],
+    'Control hipertensión' => [4,6,8],
+    'Control isquiotibial' => [1,3,5],
+    'Control diabetes' => [3,6,12]
+];
+
 $controles = [];
-$sql = "SELECT * FROM controles ORDER BY fecha_proximo_control ASC";
-$result = $conn->query($sql);
-if($result){
-    while($row = $result->fetch_assoc()){
-        $controles[$row['paciente_id']][] = $row;
-    }
-}
+$hoy = new DateTime();
+foreach($pacientes as $p){
+    $num_controles = rand(2,3); 
+    $fecha_inicio = new DateTime('-1 year');
+    $controles[$p['id']] = [];
+    for($i=0;$i<$num_controles;$i++){
+        $tipo_control = array_rand($tipos_control);
+        $intervalos = $tipos_control[$tipo_control];
+        $intervalo_meses = $intervalos[array_rand($intervalos)];
 
-// Estudios
-$estudios = [];
-$sql = "SELECT * FROM estudios ORDER BY proximo_control ASC";
-$result = $conn->query($sql);
-if($result){
-    while($row = $result->fetch_assoc()){
-        $estudios[$row['paciente_id']][] = $row;
-    }
-}
+        $dur_total = rand(3,7); 
+        $tiempo_transcurrido = rand(1,$dur_total);
 
-// Medicación
-$medicacion = [];
-$sql = "SELECT * FROM medicacion ORDER BY paciente_id ASC";
-$result = $conn->query($sql);
-if($result){
-    while($row = $result->fetch_assoc()){
-        $medicacion[$row['paciente_id']][] = $row;
-    }
-}
+        $fecha_ultimo = clone $fecha_inicio;
+        $fecha_prox = clone $fecha_ultimo;
+        $fecha_prox->modify("+$intervalo_meses months");
 
-// Cargar CIE-10 CSV
-$cie_file = __DIR__ . "/tabla-salud_cie10.csv";
-$cie_data = [];
-if (($handle = fopen($cie_file, "r")) !== false) {
-    $header = fgetcsv($handle);
-    while (($row = fgetcsv($handle)) !== false) {
-        $cie_data[] = [
-            'codigo' => $row[0],
-            'titulo' => $row[1],
-            'sintomas' => isset($row[2]) ? array_map('trim', explode(',', $row[2])) : [],
-            // Probabilidad de complicaciones si no se trata (ejemplo)
-            'complicaciones' => $row[3] ?? ''
+        $controles[$p['id']][] = [
+            'tipo_control' => $tipo_control,
+            'fecha_ultimo_control' => $fecha_ultimo->format('Y-m-d'),
+            'fecha_proximo_control' => $fecha_prox->format('Y-m-d'),
+            'dur_total' => $dur_total,
+            'tiempo_transcurrido' => $tiempo_transcurrido
         ];
+
+        // Próximo turno a futuro si el tratamiento no terminó
+        if($tiempo_transcurrido < $dur_total){
+            $fecha_futuro = clone $fecha_prox;
+            $fecha_futuro->modify("+1 month");
+            $controles[$p['id']][] = [
+                'tipo_control' => $tipo_control,
+                'fecha_ultimo_control' => $fecha_prox->format('Y-m-d'),
+                'fecha_proximo_control' => $fecha_futuro->format('Y-m-d'),
+                'dur_total' => $dur_total,
+                'tiempo_transcurrido' => $tiempo_transcurrido
+            ];
+        }
+
+        $fecha_inicio = clone $fecha_prox;
     }
-    fclose($handle);
 }
 
-// Cargar medicamentos CSV
-$med_file = __DIR__ . "/vademecum 2018.csv";
-$med_data = [];
-if (($handle = fopen($med_file, "r")) !== false) {
-    $header = fgetcsv($handle);
-    while (($row = fgetcsv($handle)) !== false) {
-        $med_data[] = [
-            'nombre' => $row[0],
-            'principio' => $row[1],
-            'presentacion' => $row[2],
-            'posologia' => $row[3] ?? '',
-            'aprobado' => $row[4] ?? ''
-        ];
-    }
-    fclose($handle);
-}
-
-// Función para limpiar texto de palabras como "control", "consulta", etc.
-function limpiar_sintoma($s){
-    $s = strtolower($s);
-    $s = str_replace(['control','consulta','examen'], '', $s);
-    return trim($s);
+// Función para medicación
+function medicacion_simulada($tipo){
+    $map = [
+        'Control hipertensión' => 'Enalapril 10mg, 1 c/día',
+        'Control alergias' => 'Antihistamínico, 1 c/12h',
+        'Control isquiotibial' => 'Ibuprofeno 400mg, 1 c/8h',
+        'Control diabetes' => 'Metformina 500mg, 1 c/12h'
+    ];
+    return $map[$tipo] ?? 'Sin medicación registrada';
 }
 ?>
 <!DOCTYPE html>
@@ -97,10 +88,10 @@ function limpiar_sintoma($s){
 <title>Controles de Pacientes | SaludProactiva</title>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 <style>
-body, html { height: 100%; margin:0; font-family: 'Segoe UI', sans-serif; display:flex; flex-direction:column; }
-.navbar { background-color: #212529; }
-.navbar .btn-menu { background-color: #212529; color: #fff; margin-right:0.5rem; }
-.navbar .btn-menu:hover { background-color: #6c757d; }
+body, html { font-family:'Segoe UI',sans-serif; display:flex; flex-direction:column; margin:0; }
+.navbar { background-color:#212529; }
+.navbar .btn-menu { background-color:#212529; color:#fff; margin-right:0.5rem; }
+.navbar .btn-menu:hover { background-color:#6c757d; }
 .navbar-text { color:#fff; margin-right:0.5rem; }
 .btn-salir { background-color:#dc3545; color:#fff; border:none; }
 .btn-salir:hover { background-color:#b02a37; }
@@ -110,36 +101,26 @@ body, html { height: 100%; margin:0; font-family: 'Segoe UI', sans-serif; displa
 .card-header { font-weight:600; background-color:#0d6efd; color:#fff; }
 .card-body { background-color:#fff; }
 
-.btn-recordatorio {
-    background: linear-gradient(135deg,#0dcaf0,#198754);
-    color: #fff;
-    border: none;
-    border-radius: 12px;
-    padding: 8px 16px;
-    margin-right:5px;
-    font-weight: 600;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.2);
-    transition: 0.3s ease;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
+.btn-recordatorio, .btn-whatsapp, .btn-estudio, .btn-indicaciones {
+    border:none; border-radius:8px; padding:6px 12px; font-weight:600; margin-right:5px; cursor:pointer; color:#fff;
 }
-.btn-recordatorio:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 12px rgba(0,0,0,0.3);
-    background: linear-gradient(135deg,#198754,#0dcaf0);
-}
+.btn-recordatorio { background: linear-gradient(135deg,#0dcaf0,#198754);}
+.btn-recordatorio:hover { background: linear-gradient(135deg,#198754,#0dcaf0);}
+.btn-whatsapp { background:#25D366; }
+.btn-whatsapp:hover { background:#128C7E; }
+.btn-estudio { background:#0d6efd; }
+.btn-estudio:hover { background:#0b5ed7; }
+.btn-indicaciones { background:#ffc107; color:#000; }
+.btn-indicaciones:hover { background:#e0a800; }
 
 footer { background-color:#212529; color:#fff; text-align:center; padding:12px 0; }
 footer a { color:#0d6efd; text-decoration:none; font-weight:bold; }
 footer a:hover { text-decoration:underline; }
 
-.alerta-vencido { color: #dc3545; font-weight: 600; }
-.alerta-proximo { color: #ffc107; font-weight: 600; }
-
-#imagen-vacia img { max-height:150px; opacity:0.3; filter: grayscale(50%); }
+#imagen-vacia img { max-height:150px; opacity:0.3; filter: grayscale(50%);}
 #imagen-vacia p { color:#6c757d; font-style:italic; margin-top:10px; }
+
+.progress { height:20px; margin-bottom:10px; }
 </style>
 </head>
 <body>
@@ -184,81 +165,62 @@ footer a:hover { text-decoration:underline; }
 </div>
 
 <div id="paciente-seleccionado">
-    <?php foreach($pacientes as $p): ?>
-        <div class="card paciente-card" data-paciente-id="<?= $p['id'] ?>" style="display:none;">
-            <div class="card-header">
-                Controles de <?= htmlspecialchars($p['nombre'] . ' ' . $p['apellido']) ?>
-            </div>
-            <div class="card-body">
-                <?php if(isset($controles[$p['id']])): ?>
-                    <h6>Controles:</h6>
-                    <ul>
-                    <?php
-                    $paciente_sintomas = array_map(function($c){ return limpiar_sintoma($c['tipo_control']); }, $controles[$p['id']]);
-                    foreach($controles[$p['id']] as $c):
-                        $hoy = new DateTime();
-                        $fecha_prox = new DateTime($c['fecha_proximo_control']);
-                        $clase_alerta = '';
-                        if($fecha_prox < $hoy) $clase_alerta = 'alerta-vencido';
-                        elseif($fecha_prox <= (new DateTime())->modify('+3 days')) $clase_alerta = 'alerta-proximo';
-                    ?>
-                        <li>
-                            <strong>Tipo:</strong> <?= htmlspecialchars($c['tipo_control']) ?> |
-                            <strong>Último:</strong> <?= $c['fecha_ultimo_control'] ?> |
-                            <strong>Próximo:</strong> <span class="<?= $clase_alerta ?>"><?= $c['fecha_proximo_control'] ?></span>
-                            <br>
-                            <button class="btn-recordatorio" onclick="enviarRecordatorio('<?= htmlspecialchars($p['nombre']) ?>','control','<?= htmlspecialchars($c['tipo_control']) ?>')">🔔 Recordatorio</button>
-                        </li>
-                    <?php endforeach; ?>
-                    </ul>
-
-                    <?php
-                    // Pronóstico / coincidencias CIE-10
-                    $cie_matches = [];
-                    foreach($cie_data as $cie){
-                        foreach($cie['sintomas'] as $s){
-                            foreach($paciente_sintomas as $ps){
-                                if(stripos($ps, trim($s)) !== false || stripos(trim($s), $ps) !== false){
-                                    $cie_matches[$cie['codigo']] = $cie;
-                                }
-                            }
-                        }
-                    }
-
-                    if(count($cie_matches) > 0){
-                        echo "<h6 class='mt-3'>Coincidencias CIE-10 para los síntomas registrados:</h6><ul>";
-                        $meds_global = []; // Para no repetir medicamentos
-                        foreach($cie_matches as $cod => $cie){
-                            echo "<li><strong>$cod</strong>: {$cie['titulo']}</li>";
-                            if(!empty($cie['complicaciones'])){
-                                echo "<p><em>Probabilidad de complicaciones si no se trata: {$cie['complicaciones']}</em></p>";
-                            }
-                            // Medicamentos sugeridos
-                            foreach($med_data as $m){
-                                if(stripos($cie['titulo'], $m['nombre']) !== false || stripos($cie['titulo'], $m['principio']) !== false){
-                                    $meds_global[$m['nombre']] = $m;
-                                }
-                            }
-                        }
-                        echo "</ul>";
-
-                        if(count($meds_global) > 0){
-                            echo "<h6 class='mt-2'>Medicamentos sugeridos:</h6><ul>";
-                            foreach($meds_global as $m){
-                                echo "<li><strong>{$m['nombre']}</strong> ({$m['principio']}), {$m['presentacion']}, Posología: {$m['posologia']}</li>";
-                            }
-                            echo "</ul>";
-                        }
-                    } else {
-                        echo "<p class='text-danger mt-2'>No se encontraron coincidencias en CIE-10 para los síntomas registrados.</p>";
-                    }
-                    ?>
-                <?php else: ?>
-                    <p>No hay controles registrados.</p>
-                <?php endif; ?>
-            </div>
+<?php foreach($pacientes as $p): ?>
+    <div class="card paciente-card" data-paciente-id="<?= $p['id'] ?>" style="display:none;">
+        <div class="card-header">
+            Controles de <?= htmlspecialchars($p['nombre'] . ' ' . $p['apellido']) ?>
         </div>
-    <?php endforeach; ?>
+        <div class="card-body">
+            <?php
+            $controlsForPatient = $controles[$p['id']] ?? [];
+            $agrupados = [];
+            foreach($controlsForPatient as $c){
+                $agrupados[$c['tipo_control']][] = $c;
+            }
+            foreach($agrupados as $tipo => $controlesTipo):
+                $total_duracion = 0;
+                $total_transcurrido = 0;
+                foreach($controlesTipo as $c){
+                    $total_duracion += $c['dur_total'];
+                    $total_transcurrido += $c['tiempo_transcurrido'];
+                }
+                $recuperacion = intval(($total_transcurrido/$total_duracion)*100);
+            ?>
+            <div style="margin-bottom:20px;">
+                <h5><?= htmlspecialchars($tipo) ?></h5>
+                <p><strong>Controles realizados:</strong> <?= count($controlesTipo) ?> | <strong>% recuperación global:</strong> <?= $recuperacion ?>%</p>
+
+                <?php foreach($controlesTipo as $index => $c):
+                    $fecha_ultimo = new DateTime($c['fecha_ultimo_control']);
+                    $fecha_prox = new DateTime($c['fecha_proximo_control']);
+                    $es_futuro = $fecha_prox > $hoy;
+                ?>
+                <p>
+                    <strong>Último:</strong> <?= $fecha_ultimo->format('Y-m-d') ?><?php if($fecha_ultimo <= $hoy): ?> | <strong>Asistió:</strong> Sí<?php endif; ?><br>
+                    <strong>Próximo:</strong> <?= $fecha_prox->format('Y-m-d') ?>
+                    <?php if($es_futuro): ?>
+                        <button class="btn-recordatorio" onclick="enviarRecordatorio('<?= htmlspecialchars($p['nombre']) ?>','control','<?= htmlspecialchars($tipo) ?>')">🔔 Recordatorio</button>
+                        <button class="btn-estudio" onclick="cargarEstudios('<?= htmlspecialchars($p['nombre']) ?>')">📄 Cargar estudios</button>
+                    <?php else: ?>
+                        <button class="btn-estudio" onclick="descargarEstudios('<?= htmlspecialchars($p['nombre']) ?>')">📄 Descargar estudios</button>
+                    <?php endif; ?>
+                </p>
+                <?php endforeach; ?>
+
+                <p><strong>Medicación:</strong> <?= medicacion_simulada($tipo) ?></p>
+                <button class="btn-whatsapp" onclick="enviarWhatsApp('<?= htmlspecialchars($p['nombre']) ?>','<?= medicacion_simulada($tipo) ?>')">💬 WhatsApp</button>
+                <button class="btn-indicaciones" onclick="enviarIndicaciones('<?= htmlspecialchars($p['nombre']) ?>')">📝 Enviar indicaciones</button>
+
+                <p><strong>Avance del tratamiento:</strong></p>
+                <div class="progress">
+                    <div class="progress-bar" role="progressbar" style="width:<?= $recuperacion ?>%" aria-valuenow="<?= $recuperacion ?>" aria-valuemin="0" aria-valuemax="100"><?= $recuperacion ?>%</div>
+                </div>
+                <p>Duración total: <?= $total_duracion ?> meses | Tiempo transcurrido: <?= $total_transcurrido ?> meses</p>
+            </div>
+            <?php endforeach; ?>
+        </div>
+    </div>
+<?php endforeach; ?>
 </div>
 </div>
 
@@ -274,11 +236,7 @@ const imagenVacia = document.getElementById('imagen-vacia');
 
 selectPaciente.addEventListener('change', function(){
     const val = this.value;
-    if(val === ""){
-        imagenVacia.style.display = 'block';
-    } else {
-        imagenVacia.style.display = 'none';
-    }
+    imagenVacia.style.display = val === "" ? 'block' : 'none';
     cards.forEach(card => {
         card.style.display = card.dataset.pacienteId === val ? 'block' : 'none';
     });
@@ -288,8 +246,24 @@ function enviarRecordatorio(nombre, tipo, descripcion){
     const now = new Date().toLocaleString();
     alert(`Se envió un recordatorio a ${nombre} para ${tipo}: ${descripcion}\n(${now})`);
 }
+
+function enviarWhatsApp(nombre, medicacion){
+    const url = `https://api.whatsapp.com/send?text=Hola ${nombre}, recuerde su medicación: ${medicacion}`;
+    window.open(url,'_blank');
+}
+
+function enviarIndicaciones(nombre){
+    const indicacion = prompt(`Escriba las indicaciones para ${nombre}:`, "Tomar medicación y seguir control médico");
+    if(indicacion) alert(`Indicaciones enviadas a ${nombre}: ${indicacion}`);
+}
+
+function descargarEstudios(nombre){
+    alert(`Descargando estudios de ${nombre}... (simulado)`);
+}
+
+function cargarEstudios(nombre){
+    alert(`Cargar estudios para ${nombre}... (simulado)`);
+}
 </script>
 </body>
 </html>
-
-
